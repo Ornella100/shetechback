@@ -22,7 +22,12 @@ export const generateQuizParcours = async (req, res) => {
               include: {
                 cours: {
                   orderBy: { id: 'asc' },
-                  include: { lecons: { orderBy: { id: 'asc' }, select: { titre: true, contenuTexte: true } } },
+                  include: {
+                    lecons: {
+                      orderBy: { id: 'asc' },
+                      select: { titre: true, description: true, contenuTexte: true, videos: { select: { titre: true } } },
+                    },
+                  },
                 },
               },
             },
@@ -33,18 +38,20 @@ export const generateQuizParcours = async (req, res) => {
     if (!parcours) return res.status(404).json({ message: 'Parcours introuvable' });
 
     const contenu = parcours.formations
-      .map(f => {
-        const lecons = f.modules
-          .flatMap(m => m.cours)
-          .flatMap(c => c.lecons)
-          .map(l => `${l.titre}\n${l.contenuTexte || ''}`)
-          .join('\n');
-        return `Formation : ${f.titre}\n${lecons}`;
-      })
+      .map(f => `Formation : ${f.titre}\n${f.description || ''}\n${f.modules
+        .map(m => `Module : ${m.titre}\n${m.description || ''}\n${m.cours
+          .map(c => `Cours : ${c.titre}\n${c.description || ''}\n${c.lecons
+            .map(l => [l.titre, l.description, l.contenuTexte, ...(l.videos || []).map(v => `Vidéo : ${v.titre}`)]
+              .filter(Boolean).join('\n'))
+            .join('\n')}`)
+          .join('\n')}`)
+        .join('\n')}`)
       .join('\n\n')
       .trim();
 
-    if (!contenu) return res.status(400).json({ message: 'Aucun contenu texte dans les formations de ce parcours.' });
+    if (!parcours.formations.some(f => f.modules.length))
+      return res.status(400).json({ message: 'Ajoutez au moins un module à une formation du parcours avant de générer le quiz.' });
+    if (!contenu) return res.status(400).json({ message: 'Ajoutez des titres ou descriptions de cours et de leçons avant de générer le quiz.' });
 
     const questions = await genererQuestionsQuiz({
       titre: `Parcours ${parcours.titre}`,
