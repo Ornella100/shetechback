@@ -1,6 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { attribuerBadges } from '../lib/badges.js';
-import { genererQuestionsQuiz } from '../lib/gemini.js';
+import { genererQuestionsQuiz, messageErreurGeminiPourAdmin } from '../lib/gemini.js';
 import { normaliserQuestion, versFormatAdmin } from './formationquiz.controller.js';
 
 // Le Grand Certificat de parcours exige un sans-faute
@@ -60,7 +60,9 @@ export const generateQuizParcours = async (req, res) => {
     });
     res.json({ questions, parcours_titre: parcours.titre });
   } catch (err) {
-    res.status(500).json({ message: 'Erreur lors de la génération du quiz', detail: err.message });
+    console.error('[Gemini] Échec génération quiz parcours:', err.message);
+    const status = [408, 429, 500, 503].includes(err.status) ? err.status : 500;
+    res.status(status).json({ message: messageErreurGeminiPourAdmin(err) });
   }
 };
 

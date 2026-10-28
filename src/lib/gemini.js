@@ -5,6 +5,18 @@ const ERREURS_TEMPORAIRES = new Set([408, 429, 500, 503]);
 
 const attendre = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+export function messageErreurGeminiPourAdmin(error) {
+  if (error?.status === 503 || error?.status === 500 || error?.status === 408)
+    return 'Le service de génération est momentanément très sollicité. Réessayez dans quelques minutes.';
+  if (error?.status === 429)
+    return 'La limite de demandes Gemini est momentanément atteinte. Veuillez réessayer plus tard.';
+  if (error?.status === 401 || error?.status === 403)
+    return 'La connexion au service Gemini a échoué. Vérifiez la clé API configurée sur Render.';
+  if (error?.status === 404)
+    return 'Le modèle Gemini configuré est indisponible. Vérifiez GEMINI_MODEL dans Render.';
+  return 'Le quiz n’a pas pu être généré pour le moment. Vérifiez la configuration Gemini puis réessayez.';
+}
+
 async function appelerModele(model, apiKey, prompt) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   for (let tentative = 0; tentative < 2; tentative++) {
