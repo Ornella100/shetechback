@@ -26,7 +26,26 @@ async function appelerModele(model, apiKey, prompt) {
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 2048, responseMimeType: 'application/json' },
+          generationConfig: {
+            maxOutputTokens: 8192,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'ARRAY',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  question: { type: 'STRING' },
+                  option_a: { type: 'STRING' },
+                  option_b: { type: 'STRING' },
+                  option_c: { type: 'STRING' },
+                  option_d: { type: 'STRING' },
+                  reponse_correcte: { type: 'STRING', enum: ['a', 'b', 'c', 'd'] },
+                  explication: { type: 'STRING' },
+                },
+                required: ['question', 'option_a', 'option_b', 'option_c', 'option_d', 'reponse_correcte', 'explication'],
+              },
+            },
+          },
         }),
       });
       const raw = await response.text();
