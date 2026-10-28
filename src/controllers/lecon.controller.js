@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { recalculerProgressionFormation } from '../lib/progression-formation.js';
 
 export const getLecons = async (req, res) => {
   const coursId = Number(req.params.coursId);
@@ -103,6 +104,11 @@ export const markLeconComplete = async (req, res) => {
   const userId = req.user.id;
   const { tempsPasseMinutes } = req.body;
   try {
+    const lecon = await prisma.lecon.findUnique({
+      where: { id: leconId },
+      select: { cours: { select: { module: { select: { formationId: true } } } } },
+    });
+    if (!lecon) return res.status(404).json({ message: 'Leçon introuvable' });
     const progression = await prisma.progressionLecon.upsert({
       where: { userId_leconId: { userId, leconId } },
       update: {
@@ -118,6 +124,7 @@ export const markLeconComplete = async (req, res) => {
         tempsPasseMinutes: tempsPasseMinutes || 0,
       },
     });
+    await recalculerProgressionFormation(userId, lecon.cours.module.formationId);
     res.json(progression);
   } catch (err) {
     res.status(500).json({ message: 'Erreur serveur', error: err.message });

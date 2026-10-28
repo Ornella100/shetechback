@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
 import { getFormationAccess, masquerContenuFormation } from '../lib/formation-access.js';
+import { recalculerProgressionFormation } from '../lib/progression-formation.js';
 
 // Auth optionnelle : la route reste publique (navigation), mais si un token valide
 // est fourni on détermine si le contenu des leçons doit être dépouillé (essai expiré).
@@ -67,6 +68,30 @@ export const getFormation = async (req, res) => {
     res.json(formation);
   } catch (err) {
     res.status(500).json({ message: 'Erreur serveur', error: err.message });
+  }
+};
+
+// POST /formations/:id/demarrer — crée la progression à 0 % au premier accès.
+export const demarrerFormation = async (req, res) => {
+  const formationId = Number(req.params.id);
+  try {
+    const leconsDisponibles = await prisma.lecon.count({
+      where: {
+        isActive: true,
+        cours: { isActive: true, module: { isActive: true, formationId } },
+      },
+    });
+    if (leconsDisponibles === 0) {
+      return res.status(409).json({
+        code: 'FORMATION_EN_PREPARATION',
+        message: 'Cette formation sera disponible dès que ses leçons seront ajoutées.',
+      });
+    }
+
+    const progression = await recalculerProgressionFormation(req.user.id, formationId);
+    res.json({ message: 'Formation commencée', pourcentage: progression.pourcentage });
+  } catch (err) {
+    res.status(500).json({ message: 'Impossible d’enregistrer le démarrage de la formation.', error: err.message });
   }
 };
 

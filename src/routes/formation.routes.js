@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { verifierToken, verifierAdmin } from '../middlewares/auth.middleware.js';
 import { verifierAccesFormation } from '../middlewares/formation-access.middleware.js';
 import {
-  getFormations, getFormation, createFormation, updateFormation, deleteFormation,
+  getFormations, getFormation, demarrerFormation, createFormation, updateFormation, deleteFormation,
   getProjetsBriefs, getAdminProjetsBriefs, createProjetBrief, updateProjetBrief, deleteProjetBrief,
 } from '../controllers/formation.controller.js';
 import {
@@ -20,6 +20,7 @@ router.delete('/admin/projets-briefs/:id', verifierToken, verifierAdmin, deleteP
 
 router.get('/', getFormations);
 router.post('/', verifierToken, verifierAdmin, createFormation);
+router.post('/:id/demarrer', verifierToken, verifierAccesFormation('formation', 'id'), demarrerFormation);
 router.get('/:id', getFormation);
 router.put('/:id', verifierToken, verifierAdmin, updateFormation);
 router.delete('/:id', verifierToken, verifierAdmin, deleteFormation);

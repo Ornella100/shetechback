@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { attribuerBadges } from '../lib/badges.js';
+import { recalculerProgressionFormation } from '../lib/progression-formation.js';
 
 // IDs des leçons complétées par l'utilisatrice pour une formation donnée
 export const getFormationProgressionLecons = async (req, res) => {
@@ -22,11 +23,17 @@ export const getFormationProgressionLecons = async (req, res) => {
 export const terminerLecon = async (req, res) => {
   const leconId = Number(req.params.id);
   try {
+    const lecon = await prisma.lecon.findUnique({
+      where: { id: leconId },
+      select: { cours: { select: { module: { select: { formationId: true } } } } },
+    });
+    if (!lecon) return res.status(404).json({ message: 'Leçon introuvable' });
     await prisma.progressionLecon.upsert({
       where: { userId_leconId: { userId: req.user.id, leconId } },
       update: { completee: true, dateCompletee: new Date() },
       create: { userId: req.user.id, leconId, completee: true, dateCompletee: new Date() },
     });
+    await recalculerProgressionFormation(req.user.id, lecon.cours.module.formationId);
     await attribuerBadges(req.user.id);
     res.json({ message: 'Leçon marquée comme terminée' });
   } catch {
@@ -53,6 +60,21 @@ export const getModuleProgression = async (req, res) => {
 
 export const getProgression = async (req, res) => {
   try {
+    const [existantes, leconsFaites] = await Promise.all([
+      prisma.progressionFormation.findMany({ where: { userId: req.user.id }, select: { formationId: true } }),
+      prisma.progressionLecon.findMany({
+        where: { userId: req.user.id, completee: true },
+        select: { lecon: { select: { cours: { select: { module: { select: { formationId: true } } } } } } },
+      }),
+    ]);
+    const formationIds = new Set([
+      ...existantes.map((p) => p.formationId),
+      ...leconsFaites.map((p) => p.lecon.cours.module.formationId),
+    ]);
+    await Promise.all([...formationIds].map((formationId) =>
+      recalculerProgressionFormation(req.user.id, formationId)
+    ));
+
     const progressions = await prisma.progressionFormation.findMany({
       where: { userId: req.user.id },
       include: { formation: { select: { titre: true, domaine: true } } },
@@ -93,27 +115,16 @@ export const getProgressionCalculee = async (req, res) => {
   const formationId = Number(req.params.id);
   const userId = req.user.id;
   try {
-    const [totalLecons, leconsFaites, totalQuiz, quizReussis] = await Promise.all([
-      prisma.lecon.count({ where: { cours: { module: { formationId } } } }),
-      prisma.progressionLecon.count({
-        where: { userId, completee: true, lecon: { cours: { module: { formationId } } } },
-      }),
-      prisma.coursQuiz.count({ where: { cours: { module: { formationId } } } }),
-      prisma.coursQuizResultat.count({
-        where: { userId, passed: true, quiz: { cours: { module: { formationId } } } },
-      }),
-    ]);
-    const total = totalLecons + totalQuiz;
-    const faites = leconsFaites + quizReussis;
-    const pourcentage = total === 0 ? 0 : Math.round((faites / total) * 100);
-
-    await prisma.progressionFormation.upsert({
-      where: { userId_formationId: { userId, formationId } },
-      update: { pourcentage },
-      create: { userId, formationId, pourcentage },
+    const progression = await recalculerProgressionFormation(userId, formationId);
+    res.json({
+      pourcentage: progression.pourcentage,
+      total: progression.total,
+      faites: progression.faites,
+      total_lecons: progression.totalLecons,
+      lecons_faites: progression.leconsFaites,
+      total_quiz: progression.totalQuiz,
+      quiz_reussis: progression.quizReussis,
     });
-
-    res.json({ pourcentage, total, faites, total_lecons: totalLecons, lecons_faites: leconsFaites, total_quiz: totalQuiz, quiz_reussis: quizReussis });
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });
   }
