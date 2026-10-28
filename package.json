@@ -10,7 +10,9 @@
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
     "db:seed": "node prisma/seed.js",
-    "db:seed:parcours": "node prisma/seed-parcours.js"
+    "db:seed:parcours": "node prisma/seed-parcours.js",
+    "db:seed:catalogue": "node prisma/seed-catalogue.js",
+    "db:migrate:deploy": "prisma migrate deploy"
   },
   "keywords": [],
   "author": "",

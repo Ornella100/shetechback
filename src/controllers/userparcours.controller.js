@@ -35,6 +35,22 @@ export const inscrireParcours = async (req, res) => {
     const parcours = await prisma.parcours.findUnique({ where: { id: parcoursId }, select: { id: true, titre: true } });
     if (!parcours) return res.status(404).json({ message: 'Parcours introuvable' });
 
+    const leconsDisponibles = await prisma.lecon.count({
+      where: {
+        isActive: true,
+        cours: {
+          isActive: true,
+          module: { isActive: true, formation: { parcoursId } },
+        },
+      },
+    });
+    if (leconsDisponibles === 0) {
+      return res.status(409).json({
+        code: 'PARCOURS_EN_PREPARATION',
+        message: 'Ce parcours sera ouvert dès qu’il contiendra au moins une leçon.',
+      });
+    }
+
     const resultat = await prisma.$transaction(async (tx) => {
       const existante = await tx.userParcours.findUnique({
         where: { userId_parcoursId: { userId, parcoursId } },

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import * as moduleController from '../controllers/module.controller.js';
 import * as leconController from '../controllers/lecon.controller.js';
 import { verifierToken, verifierAdmin } from '../middlewares/auth.middleware.js';
-import { verifierAbonnement } from '../middlewares/abonnement.middleware.js';
+import { verifierAccesFormation } from '../middlewares/formation-access.middleware.js';
 import { uploadContentImage } from '../middlewares/upload.middleware.js';
 
 const router = Router();
@@ -12,21 +12,21 @@ router.post('/upload/image', verifierToken, verifierAdmin, uploadContentImage.si
 
 // Modules
 router.get('/formations/:formationId/modules', moduleController.getModules);
-router.get('/modules/:id', moduleController.getModuleDetail);
+router.get('/modules/:id', verifierToken, verifierAccesFormation('module', 'id'), moduleController.getModuleDetail);
 router.post('/modules', verifierToken, verifierAdmin, moduleController.createModule);
 router.put('/modules/:id', verifierToken, verifierAdmin, moduleController.updateModule);
 router.delete('/modules/:id', verifierToken, verifierAdmin, moduleController.deleteModule);
 
 // Lecons
-router.get('/cours/:coursId/lecons', leconController.getLecons);
-// Contenu de leçon : réservé aux comptes en essai ou abonnés (402 sinon)
-router.get('/lecons/:id', verifierToken, verifierAbonnement, leconController.getLeconDetail);
+router.get('/cours/:coursId/lecons', verifierToken, verifierAccesFormation('cours', 'coursId'), leconController.getLecons);
+// Le contenu exige une inscription au parcours et un essai ou abonnement actif.
+router.get('/lecons/:id', verifierToken, verifierAccesFormation('lecon', 'id'), leconController.getLeconDetail);
 router.post('/lecons', verifierToken, verifierAdmin, leconController.createLecon);
 router.put('/lecons/:id', verifierToken, verifierAdmin, leconController.updateLecon);
 router.delete('/lecons/:id', verifierToken, verifierAdmin, leconController.deleteLecon);
 
 // Lecon completion tracking
-router.post('/lecons/:id/complete', verifierToken, verifierAbonnement, leconController.markLeconComplete);
+router.post('/lecons/:id/complete', verifierToken, verifierAccesFormation('lecon', 'id'), leconController.markLeconComplete);
 
 // Media resources
 router.post('/lecons/:leconId/videos', verifierToken, verifierAdmin, leconController.addVideo);

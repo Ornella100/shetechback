@@ -1,18 +1,17 @@
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma.js';
-import { getStatutAcces } from '../lib/abonnement.js';
+import { getFormationAccess, masquerContenuFormation } from '../lib/formation-access.js';
 
 // Auth optionnelle : la route reste publique (navigation), mais si un token valide
 // est fourni on détermine si le contenu des leçons doit être dépouillé (essai expiré).
-async function accesContenuDepuisRequete(req) {
+function getUserIdDepuisRequete(req) {
   const token = req.headers['authorization']?.split(' ')[1];
-  if (!token) return false;
+  if (!token) return null;
   try {
     const user = jwt.verify(token, process.env.JWT_SECRET);
-    const statut = await getStatutAcces(user.id);
-    return statut.acces;
+    return Number(user.id);
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -63,18 +62,8 @@ export const getFormation = async (req, res) => {
     });
     if (!formation) return res.status(404).json({ message: 'Formation introuvable' });
 
-    const accesContenu = await accesContenuDepuisRequete(req);
-    if (!accesContenu) {
-      // Essai expiré ou visiteur : la structure reste visible, le contenu est verrouillé
-      formation.modules?.forEach(m => m.cours?.forEach(c => c.lecons?.forEach(l => {
-        l.contenuTexte = null;
-        l.videos = [];
-        l.audios = [];
-        l.pieceJointes = [];
-        l.verrouille = true;
-      })));
-      formation.accesRestreint = true;
-    }
+    const access = await getFormationAccess(getUserIdDepuisRequete(req), id);
+    if (!access.acces) masquerContenuFormation(formation, access);
     res.json(formation);
   } catch (err) {
     res.status(500).json({ message: 'Erreur serveur', error: err.message });
@@ -83,9 +72,11 @@ export const getFormation = async (req, res) => {
 
 export const createFormation = async (req, res) => {
   const { titre, description, niveau, prix, domaine, parcours_id, ordre } = req.body;
-  if (!titre || !description || !niveau || !domaine)
-    return res.status(400).json({ message: 'Titre, description, niveau et domaine sont obligatoires' });
+  if (!titre || !description || !niveau || !domaine || !parcours_id)
+    return res.status(400).json({ message: 'Titre, description, niveau, domaine et parcours sont obligatoires' });
   try {
+    const parcours = await prisma.parcours.findUnique({ where: { id: Number(parcours_id) }, select: { id: true } });
+    if (!parcours) return res.status(404).json({ message: 'Parcours introuvable. Choisissez un parcours existant.' });
     const f = await prisma.formation.create({
       data: {
         titre,
@@ -93,7 +84,7 @@ export const createFormation = async (req, res) => {
         niveau,
         prix: prix || 0,
         domaine,
-        parcoursId: parcours_id ? Number(parcours_id) : null,
+        parcoursId: parcours.id,
         ordre: ordre != null ? Number(ordre) : 0,
       },
     });
@@ -105,15 +96,20 @@ export const createFormation = async (req, res) => {
 
 export const updateFormation = async (req, res) => {
   const { titre, description, niveau, prix, domaine, parcours_id, ordre } = req.body;
-  const data = {};
-  if (titre !== undefined) data.titre = titre;
-  if (description !== undefined) data.description = description;
-  if (niveau !== undefined) data.niveau = niveau;
-  if (prix !== undefined) data.prix = prix;
-  if (domaine !== undefined) data.domaine = domaine;
-  if (parcours_id !== undefined) data.parcoursId = parcours_id ? Number(parcours_id) : null;
-  if (ordre !== undefined) data.ordre = Number(ordre);
   try {
+    const data = {};
+    if (titre !== undefined) data.titre = titre;
+    if (description !== undefined) data.description = description;
+    if (niveau !== undefined) data.niveau = niveau;
+    if (prix !== undefined) data.prix = prix;
+    if (domaine !== undefined) data.domaine = domaine;
+    if (parcours_id !== undefined) {
+      if (!parcours_id) return res.status(400).json({ message: 'Une formation doit rester rattachée à un parcours.' });
+      const parcours = await prisma.parcours.findUnique({ where: { id: Number(parcours_id) }, select: { id: true } });
+      if (!parcours) return res.status(404).json({ message: 'Parcours introuvable' });
+      data.parcoursId = parcours.id;
+    }
+    if (ordre !== undefined) data.ordre = Number(ordre);
     await prisma.formation.update({ where: { id: Number(req.params.id) }, data });
     res.json({ message: 'Formation mise à jour' });
   } catch (err) {

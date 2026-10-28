@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { verifierToken, verifierAdmin } from '../middlewares/auth.middleware.js';
-import { verifierAbonnement } from '../middlewares/abonnement.middleware.js';
+import { verifierAccesParcours } from '../middlewares/formation-access.middleware.js';
 import {
   getParcours, getParcoursDetail,
   createParcours, updateParcours, deleteParcours,
@@ -36,8 +36,8 @@ router.delete('/:id/inscription', verifierToken, desinscrireParcours);
 router.post('/:id/quiz-final/generate', verifierToken, verifierAdmin, generateQuizParcours);
 router.post('/:id/quiz-final', verifierToken, verifierAdmin, saveQuizParcours);
 router.get('/:id/quiz-final/admin', verifierToken, verifierAdmin, getQuizParcoursAdmin);
-router.get('/:id/quiz-final/status', verifierToken, getQuizParcoursStatus);
-router.get('/:id/quiz-final', verifierToken, getQuizParcours);
-router.post('/:id/quiz-final/soumettre', verifierToken, verifierAbonnement, soumettreQuizParcours);
+router.get('/:id/quiz-final/status', verifierToken, verifierAccesParcours('id'), getQuizParcoursStatus);
+router.get('/:id/quiz-final', verifierToken, verifierAccesParcours('id'), getQuizParcours);
+router.post('/:id/quiz-final/soumettre', verifierToken, verifierAccesParcours('id'), soumettreQuizParcours);
 
 export default router;
