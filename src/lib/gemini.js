@@ -1,5 +1,34 @@
 // Appel à l'API Google Gemini native (utilise le quota gratuit via GEMINI_API_KEY)
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+const GEMINI_FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || 'gemini-3.6-flash';
+const ERREURS_TEMPORAIRES = new Set([408, 429, 500, 503]);
+
+const attendre = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function appelerModele(model, apiKey, prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  for (let tentative = 0; tentative < 2; tentative++) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 2048, responseMimeType: 'application/json' },
+        }),
+      });
+      const raw = await response.text();
+      if (response.ok) return JSON.parse(raw);
+
+      const error = new Error(`Erreur Gemini API (${response.status}): ${raw.substring(0, 300)}`);
+      error.status = response.status;
+      if (!ERREURS_TEMPORAIRES.has(response.status) || tentative === 1) throw error;
+    } catch (error) {
+      if (!ERREURS_TEMPORAIRES.has(error.status) || tentative === 1) throw error;
+    }
+    await attendre(900 + tentative * 900 + Math.floor(Math.random() * 300));
+  }
+}
 
 /**
  * Génère un QCM en français à partir d'un contenu pédagogique.
@@ -33,25 +62,13 @@ FORMAT JSON attendu :
   }
 ]`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        maxOutputTokens: 2048,
-        responseMimeType: 'application/json',
-      },
-    }),
-  });
-
-  const raw = await response.text();
-  if (!response.ok) {
-    throw new Error(`Erreur Gemini API (${response.status}): ${raw.substring(0, 300)}`);
+  let data;
+  try {
+    data = await appelerModele(GEMINI_MODEL, apiKey, prompt);
+  } catch (error) {
+    if (!ERREURS_TEMPORAIRES.has(error.status) || GEMINI_FALLBACK_MODEL === GEMINI_MODEL) throw error;
+    data = await appelerModele(GEMINI_FALLBACK_MODEL, apiKey, prompt);
   }
-
-  const data = JSON.parse(raw);
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   if (!text) {
     const reason = data.candidates?.[0]?.finishReason || data.promptFeedback?.blockReason;
