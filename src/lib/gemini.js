@@ -1,5 +1,5 @@
 // Appel à l'API Google Gemini native (utilise le quota gratuit via GEMINI_API_KEY)
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 
 /**
  * Génère un QCM en français à partir d'un contenu pédagogique.
@@ -40,7 +40,6 @@ FORMAT JSON attendu :
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
-        temperature: 0.7,
         maxOutputTokens: 2048,
         responseMimeType: 'application/json',
       },
