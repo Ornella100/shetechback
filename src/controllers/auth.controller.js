@@ -5,6 +5,7 @@ import prisma from '../lib/prisma.js';
 import { sendResetEmail } from '../lib/mailer.js';
 import { uploadImage } from '../lib/cloudinary.js';
 import { attribuerBadges } from '../lib/badges.js';
+import { getOnlineUserIds } from '../lib/socket.js';
 
 const profilPublic = (u) => ({
   id: u.id, nom: u.nom, email: u.email, role: u.role,
@@ -199,7 +200,8 @@ export const getAdminUsers = async (req, res) => {
       orderBy: { dateCreation: 'desc' },
       select: { id: true, nom: true, email: true, role: true, niveau: true, dateCreation: true },
     });
-    res.json(users.map(u => ({ ...u, date_creation: u.dateCreation })));
+    const onlineIds = new Set(getOnlineUserIds());
+    res.json(users.map(u => ({ ...u, date_creation: u.dateCreation, is_online: onlineIds.has(u.id) })));
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });
   }
