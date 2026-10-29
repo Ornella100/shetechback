@@ -39,3 +39,32 @@ export async function uploadImage(buffer, { folder = 'shetech/avatars' } = {}) {
   }
   return data.secure_url;
 }
+
+// Stocke les modèles PDF de certificats sur Cloudinary (le disque Render est éphémère).
+export async function uploadPdf(buffer, { folder = 'shetech/certificats/parcours', publicId } = {}) {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+  if (!cloudName || !apiKey || !apiSecret) {
+    throw new Error('Configuration Cloudinary manquante (CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET).');
+  }
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const paramsToSign = { folder, public_id: publicId, timestamp };
+  const toSign = Object.keys(paramsToSign).sort().map((key) => `${key}=${paramsToSign[key]}`).join('&');
+  const signature = crypto.createHash('sha1').update(toSign + apiSecret).digest('hex');
+  const form = new URLSearchParams();
+  form.append('file', `data:application/pdf;base64,${buffer.toString('base64')}`);
+  form.append('api_key', apiKey);
+  form.append('timestamp', String(timestamp));
+  form.append('folder', folder);
+  form.append('public_id', publicId);
+  form.append('signature', signature);
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`, {
+    method: 'POST', body: form,
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(`Erreur Cloudinary : ${result?.error?.message || response.status}`);
+  return result.secure_url;
+}

@@ -63,6 +63,8 @@ model Parcours {
   titre       String
   description String   @db.Text
   imageUrl    String?  @map("image_url") @db.VarChar(500)
+  certificatTemplateUrl String? @map("certificat_template_url") @db.VarChar(1000)
+  certificatTemplateNom String? @map("certificat_template_nom") @db.VarChar(255)
   ordre       Int      @default(0)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")

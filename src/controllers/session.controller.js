@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { notifierAdminNouvelleDemandeMentorat, notifierApprenanteDecisionMentorat } from '../lib/mailer.js';
 
 function normalizeStatut(statut) {
   if (!statut || statut === 'reserve' || statut === 'réservé') return 'réservé';
@@ -74,6 +75,12 @@ export const createSession = async (req, res) => {
     const s = await prisma.sessionMentorat.create({
       data: { mentorId: Number(mentor_id), userId: req.user.id, dateSession, type, sujet: sujet || null, statut: 'en_attente' },
     });
+    const [apprenante, mentorInfo] = await Promise.all([
+      prisma.user.findUnique({ where: { id: req.user.id }, select: { nom: true, email: true, telephone: true } }),
+      prisma.user.findUnique({ where: { id: Number(mentor_id) }, select: { nom: true } }),
+    ]);
+    try { await notifierAdminNouvelleDemandeMentorat({ apprenante, mentor: mentorInfo, dateSession, type, sujet }); }
+    catch (emailError) { console.error('[Mentorat] Notification admin non envoyée:', emailError.message); }
     res.status(201).json({ message: 'Session réservée', id: s.id });
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });
@@ -157,6 +164,12 @@ export const reserverSession = async (req, res) => {
     const s = await prisma.sessionMentorat.create({
       data: { mentorId: Number(mentor_id), userId: req.user.id, dateSession: new Date(), type: 'individuel', sujet: sujet || null, notes: message || null },
     });
+    const [apprenanteInfo, mentorInfo] = await Promise.all([
+      prisma.user.findUnique({ where: { id: req.user.id }, select: { nom: true, email: true, telephone: true } }),
+      prisma.user.findUnique({ where: { id: Number(mentor_id) }, select: { nom: true } }),
+    ]);
+    try { await notifierAdminNouvelleDemandeMentorat({ apprenante: apprenanteInfo, mentor: mentorInfo, dateSession: s.dateSession, type: s.type, sujet: s.sujet }); }
+    catch (emailError) { console.error('[Mentorat] Notification admin non envoyée:', emailError.message); }
     res.status(201).json({ message: 'Session réservée', id: s.id });
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });
@@ -168,8 +181,8 @@ export const getAdminSessions = async (req, res) => {
     const sessions = await prisma.sessionMentorat.findMany({
       orderBy: { dateSession: 'desc' },
       include: {
-        user: { select: { nom: true } },
-        mentor: { select: { nom: true } },
+        user: { select: { nom: true, email: true, telephone: true } },
+        mentor: { select: { nom: true, email: true } },
       },
     });
     res.json(sessions.map(s => ({ ...mapSession(s), apprenant_nom: s.user?.nom })));
@@ -210,10 +223,23 @@ export const updateAdminSession = async (req, res) => {
     : normalizeStatut(statut);
   if (!statutNorm) return res.status(400).json({ message: 'Statut de session invalide' });
   try {
+    const existing = await prisma.sessionMentorat.findUnique({
+      where: { id: Number(req.params.id) },
+      include: { user: { select: { nom: true, email: true } }, mentor: { select: { nom: true } } },
+    });
+    if (!existing) return res.status(404).json({ message: 'Session introuvable' });
     await prisma.sessionMentorat.update({
       where: { id: Number(req.params.id) },
       data: { statut: statutNorm, notes: notes || null, lienReunion: lien_reunion || null, sujet: sujet || null },
     });
+    if (['confirmee', 'refusee'].includes(statutNorm) && existing.statut !== statutNorm) {
+      try {
+        await notifierApprenanteDecisionMentorat({
+          email: existing.user.email, nom: existing.user.nom, statut: statutNorm,
+          mentor: existing.mentor.nom, dateSession: existing.dateSession, lienReunion: lien_reunion || existing.lienReunion,
+        });
+      } catch (emailError) { console.error('[Mentorat] Notification apprenante non envoyée:', emailError.message); }
+    }
     res.json({ message: 'Session mise à jour' });
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ message: 'Session introuvable' });

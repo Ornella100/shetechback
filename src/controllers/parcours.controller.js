@@ -8,12 +8,14 @@ export const getParcours = async (req, res) => {
       orderBy: [{ ordre: 'asc' }, { id: 'asc' }],
       include: { _count: { select: { formations: true } } },
     });
-    res.json(parcours.map(p => ({
-      ...p,
+    res.json(parcours.map(p => {
+      const { certificatTemplateUrl, certificatTemplateNom, ...publicParcours } = p;
+      return {
+      ...publicParcours,
       image_url: p.imageUrl,
       nb_formations: p._count.formations,
       created_at: p.createdAt,
-    })));
+    };}));
   } catch (err) {
     res.status(500).json({ message: 'Erreur serveur', error: err });
   }
@@ -58,8 +60,9 @@ export const getParcoursDetail = async (req, res) => {
       progressionMap = Object.fromEntries(progs.map(p => [p.formationId, p.pourcentage]));
     }
 
+    const { certificatTemplateUrl, certificatTemplateNom, ...publicParcours } = parcours;
     res.json({
-      ...parcours,
+      ...publicParcours,
       image_url: parcours.imageUrl,
       created_at: parcours.createdAt,
       formations: await Promise.all(parcours.formations.map(async (f) => {

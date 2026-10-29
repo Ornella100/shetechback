@@ -61,3 +61,14 @@ export const uploadContentImage = multer({
   fileFilter: imageFilter,
   limits: { fileSize: 5 * 1024 * 1024 },
 });
+
+const pdfFilter = (_req, file, cb) => {
+  if (file.mimetype === 'application/pdf' && path.extname(file.originalname).toLowerCase() === '.pdf') cb(null, true);
+  else cb(new Error('Le certificat doit être un fichier PDF.'));
+};
+
+export const uploadCertificateTemplate = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: pdfFilter,
+  limits: { fileSize: 10 * 1024 * 1024 },
+});

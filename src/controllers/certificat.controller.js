@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import prisma from '../lib/prisma.js';
 import { generateClassicCertificatePDF, generateParcoursCertificatePDF } from '../lib/pdf.js';
 import { attribuerBadges } from '../lib/badges.js';
+import { uploadPdf } from '../lib/cloudinary.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -147,7 +148,7 @@ export const verifierEligibiliteParcours = async (req, res) => {
   const parcoursId = Number(req.params.id);
   const userId = req.user.id;
   try {
-    const parcours = await prisma.parcours.findUnique({ where: { id: parcoursId }, select: { titre: true } });
+    const parcours = await prisma.parcours.findUnique({ where: { id: parcoursId }, select: { titre: true, certificatTemplateUrl: true } });
     if (!parcours) return res.status(404).json({ message: 'Parcours introuvable' });
 
     const [nbQuiz, resultat, existant] = await Promise.all([
@@ -171,6 +172,7 @@ export const verifierEligibiliteParcours = async (req, res) => {
       quiz_final_reussi: quizReussi,
       quiz_final_score: resultat?.score ?? null,
       parcours_titre: parcours.titre,
+      certificat_template_disponible: Boolean(parcours.certificatTemplateUrl),
       message: !quizExiste
         ? 'Le quiz final de ce parcours n\'est pas encore disponible.'
         : !quizReussi
@@ -179,6 +181,73 @@ export const verifierEligibiliteParcours = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: 'Erreur serveur', detail: err.message });
+  }
+};
+
+// Liste des parcours pour que l’admin puisse téléverser/remplacer leur modèle PDF.
+export const listeParcoursCertificatsAdmin = async (_req, res) => {
+  try {
+    const parcours = await prisma.parcours.findMany({
+      select: { id: true, titre: true, certificatTemplateUrl: true, certificatTemplateNom: true },
+      orderBy: [{ ordre: 'asc' }, { id: 'asc' }],
+    });
+    res.json(parcours.map((p) => ({
+      id: p.id, titre: p.titre, certificat_disponible: Boolean(p.certificatTemplateUrl),
+      nom_fichier: p.certificatTemplateNom,
+    })));
+  } catch (err) {
+    res.status(500).json({ message: 'Impossible de charger les parcours.', detail: err.message });
+  }
+};
+
+export const televerserModeleCertificatParcoursAdmin = async (req, res) => {
+  const parcoursId = Number(req.params.parcoursId);
+  if (!Number.isInteger(parcoursId)) return res.status(400).json({ message: 'Parcours invalide.' });
+  if (!req.file) return res.status(400).json({ message: 'Sélectionnez un fichier PDF (10 Mo maximum).' });
+  if (req.file.buffer.subarray(0, 5).toString() !== '%PDF-')
+    return res.status(400).json({ message: 'Le fichier sélectionné n’est pas un PDF valide.' });
+  try {
+    const parcours = await prisma.parcours.findUnique({ where: { id: parcoursId }, select: { id: true } });
+    if (!parcours) return res.status(404).json({ message: 'Parcours introuvable.' });
+    const safeName = path.basename(req.file.originalname).slice(0, 255);
+    const url = await uploadPdf(req.file.buffer, {
+      publicId: `parcours-${parcoursId}-${Date.now()}`,
+    });
+    await prisma.parcours.update({
+      where: { id: parcoursId },
+      data: { certificatTemplateUrl: url, certificatTemplateNom: safeName },
+    });
+    res.json({ message: 'Modèle de certificat enregistré pour ce parcours.' });
+  } catch (err) {
+    console.error('[Certificats] Téléversement du modèle de parcours impossible:', err);
+    res.status(500).json({ message: err.message || 'Impossible d’enregistrer le modèle de certificat.' });
+  }
+};
+
+// Le modèle n’est téléchargeable qu’après réussite du quiz final du parcours.
+export const telechargerModeleCertificatParcours = async (req, res) => {
+  const parcoursId = Number(req.params.id);
+  try {
+    const [parcours, resultat, nbQuiz] = await Promise.all([
+      prisma.parcours.findUnique({ where: { id: parcoursId }, select: { certificatTemplateUrl: true, certificatTemplateNom: true } }),
+      prisma.parcoursQuizResultat.findUnique({
+        where: { userId_parcoursId: { userId: req.user.id, parcoursId } }, select: { passed: true },
+      }),
+      prisma.parcoursQuiz.count({ where: { parcoursId } }),
+    ]);
+    if (!parcours) return res.status(404).json({ message: 'Parcours introuvable.' });
+    if (!nbQuiz || resultat?.passed !== true)
+      return res.status(403).json({ message: 'Réussissez le quiz final du parcours avant de télécharger le certificat.' });
+    if (!parcours.certificatTemplateUrl)
+      return res.status(404).json({ message: 'Le certificat de ce parcours n’a pas encore été déposé par l’administration.' });
+    const fileResponse = await fetch(parcours.certificatTemplateUrl);
+    if (!fileResponse.ok) return res.status(502).json({ message: 'Le fichier du certificat est temporairement indisponible.' });
+    const pdf = Buffer.from(await fileResponse.arrayBuffer());
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(parcours.certificatTemplateNom || `certificat_parcours_${parcoursId}.pdf`)}`);
+    res.send(pdf);
+  } catch (err) {
+    res.status(500).json({ message: 'Impossible de télécharger le certificat.', detail: err.message });
   }
 };
 
