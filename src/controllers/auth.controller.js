@@ -201,7 +201,12 @@ export const getAdminUsers = async (req, res) => {
       select: { id: true, nom: true, email: true, role: true, niveau: true, dateCreation: true },
     });
     const onlineIds = new Set(getOnlineUserIds());
-    res.json(users.map(u => ({ ...u, date_creation: u.dateCreation, is_online: onlineIds.has(u.id) })));
+    res.json(users.map(u => ({
+      ...u,
+      niveau: u.role === 'admin' ? null : u.niveau,
+      date_creation: u.dateCreation,
+      is_online: onlineIds.has(u.id),
+    })));
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });
   }
@@ -212,7 +217,10 @@ export const updateUserRole = async (req, res) => {
   if (!['apprenante', 'admin'].includes(role))
     return res.status(400).json({ message: 'Rôle invalide' });
   try {
-    const user = await prisma.user.update({ where: { id: Number(req.params.id) }, data: { role } });
+    const user = await prisma.user.update({
+      where: { id: Number(req.params.id) },
+      data: { role, ...(role === 'admin' ? { niveau: null } : {}) },
+    });
     if (!user) return res.status(404).json({ message: 'Utilisateur introuvable' });
     res.json({ message: 'Rôle mis à jour' });
   } catch (err) {

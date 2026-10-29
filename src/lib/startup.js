@@ -10,13 +10,13 @@ export async function createDefaultAdmin() {
     if (existing) {
       await prisma.user.update({
         where: { id: existing.id },
-        data: { role: 'admin', motDePasse },
+        data: { role: 'admin', niveau: null, motDePasse },
       });
       console.log(`Compte admin configuré : ${email}`);
       return;
     }
     await prisma.user.create({
-      data: { nom: 'Admin SheTech', email, motDePasse, role: 'admin' },
+      data: { nom: 'Admin SheTech', email, motDePasse, role: 'admin', niveau: null },
     });
     console.log(`Compte admin créé : ${email}`);
   } catch (err) {
