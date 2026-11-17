@@ -7,6 +7,7 @@ import { createServer } from 'http';
 import { fileURLToPath } from 'url';
 import { createDefaultAdmin } from './lib/startup.js';
 import { initSocket } from './lib/socket.js';
+import { corsOrigin } from './lib/cors-origins.js';
 
 import authRoutes from './routes/auth.routes.js';
 import parcoursRoutes from './routes/parcours.routes.js';
@@ -34,10 +35,10 @@ const uploadsDir = path.join(__dirname, '../uploads');
 const app = express();
 
 app.use(cors({
-  origin: true,
+  origin: corsOrigin,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
+  credentials: false,
 }));
 // Le webhook FedaPay a besoin du corps BRUT (signature calculée sur les octets exacts) :
 // express.json ne doit pas le parser, la route applique express.raw elle-même.
