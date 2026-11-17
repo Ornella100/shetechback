@@ -1,5 +1,6 @@
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import { corsOrigin } from './cors-origins.js';
 
 let io;
 const connectedUsers = new Map();
@@ -8,7 +9,7 @@ const connectedUsers = new Map();
 // pour le staff, une room partagée "staff" (un message d'apprenante notifie tout admin/mentor connecté).
 export function initSocket(httpServer) {
   io = new Server(httpServer, {
-    cors: { origin: true, methods: ['GET', 'POST'], credentials: true },
+    cors: { origin: corsOrigin, methods: ['GET', 'POST'], credentials: false },
   });
 
   io.use((socket, next) => {

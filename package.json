@@ -12,6 +12,7 @@
     "db:seed": "node prisma/seed.js",
     "db:seed:parcours": "node prisma/seed-parcours.js",
     "db:seed:catalogue": "node prisma/seed-catalogue.js",
+    "db:seed:modeles-cours": "node prisma/seed-modeles-cours.js",
     "db:migrate:deploy": "node node_modules/prisma/build/index.js migrate deploy"
   },
   "keywords": [],
