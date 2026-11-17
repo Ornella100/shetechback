@@ -190,13 +190,29 @@ const CATALOGUE = [
   },
 ];
 
-function lessonContent({ titre, objectif, activite, outils }) {
+function lessonContent({ titre, objectif, activite, outils, competences, livrables, pratique }) {
+  const safe = (value) => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  const liste = (items) => items.map((item) => `<li>${safe(item)}</li>`).join('');
+  const notions = objectif.split(/[,;] /).map((item) => item.trim()).filter(Boolean);
+  const sections = pratique
+    ? [
+      `<h2>Défi pratique</h2><p>${safe(activite)}</p>`,
+      '<h2>Étapes de réalisation</h2><ol><li>Reformule le besoin et définis le résultat attendu.</li><li>Prépare ton espace de travail et rassemble les informations nécessaires.</li><li>Réalise une première version en avançant par petites étapes.</li><li>Teste le résultat avec un exemple concret et corrige ce qui ne fonctionne pas.</li><li>Présente ton travail et explique un choix que tu as fait.</li></ol>',
+      `<h2>Critères de réussite</h2><ul>${liste(competences.map((item) => `Le résultat montre que tu sais : ${item.toLowerCase()}.`))}<li>Le livrable est compréhensible, utilisable et sans donnée personnelle réelle.</li><li>Tu peux décrire une amélioration à apporter dans une prochaine version.</li></ul>`,
+      `<h2>À remettre</h2><ul>${liste(livrables)}</ul>`,
+    ]
+    : [
+      `<h2>Notions de la leçon</h2><p>${safe(objectif)}. Cette leçon présente les notions et les relie à une réalisation concrète.</p>`,
+      `<h2>Repères essentiels</h2><ul>${liste(notions.map((item) => `${item} : définis cette notion avec tes propres mots, repère à quoi elle sert et donne un exemple.`))}</ul>`,
+      '<h2>Méthode</h2><ol><li>Observe le besoin ou le problème auquel la notion répond.</li><li>Repère les informations, outils et contraintes utiles.</li><li>Étudie un exemple simple, puis explique chaque étape.</li><li>Vérifie ta compréhension en donnant un contre-exemple ou une limite.</li></ol>',
+      `<h2>Vérifie ta compréhension</h2><ol><li>Quel problème cette notion aide-t-elle à résoudre ?</li><li>Dans quel cas l’utiliserais-tu pour « ${safe(titre)} » ?</li><li>Quel point dois-tu encore vérifier avant de passer à la pratique ?</li></ol>`,
+    ];
+
   return [
-    `<h2>Objectif</h2><p>${objectif}</p>`,
-    '<h2>À retenir</h2><p>Avance étape par étape. Commence par observer le besoin, réalise une première version, puis vérifie le résultat avec une autre personne ou un exemple concret.</p>',
-    `<h2>Activité guidée</h2><p>${activite}</p>`,
-    `<h2>Matériel conseillé</h2><ul>${outils.map((outil) => `<li>${outil}</li>`).join('')}</ul>`,
-    '<p><strong>Accessibilité :</strong> les activités peuvent être réalisées en binôme ou sur un appareil partagé. Télécharge les consignes à l’avance si la connexion est limitée. Ne partage pas de mot de passe ni de donnée personnelle.</p>',
+    `<h2>Objectif pédagogique</h2><p>À la fin de cette leçon, tu pourras expliquer et appliquer : <strong>${safe(pratique ? activite : objectif)}</strong>.</p>`,
+    ...sections,
+    `<h2>Matériel conseillé</h2><ul>${liste(outils)}</ul>`,
+    '<p><strong>Pour apprendre à ton rythme :</strong> les consignes peuvent être suivies sur un appareil partagé. Télécharge-les si la connexion est limitée. Pour les exercices, utilise des exemples fictifs ou anonymisés et ne partage pas de données personnelles.</p>',
   ].join('\n');
 }
 
@@ -245,14 +261,19 @@ async function main() {
           }
 
           const lessonSpecs = [
-            { titre: `Comprendre : ${titre}`, description, type: 'théorie', dureeMinutes: 20, contenuTexte: lessonContent({ titre, objectif: description, activite: `Repère les notions principales de « ${titre} » et note un exemple tiré de ton quotidien ou d’un projet fictif.`, outils: moduleData.outils }) },
-            { titre: `Mettre en pratique : ${titre}`, description: projet, type: 'pratique', dureeMinutes: 35, contenuTexte: lessonContent({ titre, objectif: projet, activite: `Réalise « ${projet} ». Vérifie ton résultat avec une courte liste de critères, puis note ce que tu améliorerais lors d’une prochaine version.`, outils: moduleData.outils }) },
+            { titre: `Comprendre : ${titre}`, description, type: 'théorie', ordre: 1, dureeMinutes: 25, contenuTexte: lessonContent({ titre, objectif: description, activite: projet, outils: moduleData.outils, competences: moduleData.competences, livrables: moduleData.livrables, pratique: false }) },
+            { titre: `Mettre en pratique : ${titre}`, description: projet, type: 'pratique', ordre: 2, dureeMinutes: 40, contenuTexte: lessonContent({ titre, objectif: description, activite: projet, outils: moduleData.outils, competences: moduleData.competences, livrables: moduleData.livrables, pratique: true }) },
           ];
           for (let li = 0; li < lessonSpecs.length; li += 1) {
             const lesson = lessonSpecs[li];
             const exists = await prisma.lecon.findFirst({ where: { coursId: cours.id, titre: lesson.titre } });
             if (!exists) {
-              await prisma.lecon.create({ data: { coursId: cours.id, ...lesson, ordre: li + 1 } });
+              await prisma.lecon.create({ data: { coursId: cours.id, ...lesson } });
+              leconsCreees += 1;
+            } else if (/Repère les notions principales|Réalise «/.test(exists.contenuTexte || '')) {
+              // Met à niveau les textes génériques créés par la première version
+              // du seed, sans toucher aux leçons rédigées manuellement.
+              await prisma.lecon.update({ where: { id: exists.id }, data: lesson });
               leconsCreees += 1;
             }
           }
