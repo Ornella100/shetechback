@@ -30,6 +30,8 @@ model User {
   projetsEnMentorat    Projet[]          @relation("MentorProjets")
   sessionsMentorat     SessionMentorat[] @relation("ApprenanteSessions")
   sessionsMentor       SessionMentorat[] @relation("MentorSessions")
+  demandesMentorat     DemandeMentorat[] @relation("ApprenanteDemandesMentorat")
+  suivisMentorat       DemandeMentorat[] @relation("MentorDemandesMentorat")
   projetCommentaires   ProjetCommentaire[]
   projetLikes          ProjetLike[]
   projetMessages       ProjetMessage[]
@@ -73,6 +75,7 @@ model Parcours {
   quiz          ParcoursQuiz[]
   quizResultats ParcoursQuizResultat[]
   inscriptions  UserParcours[]
+  demandesMentorat DemandeMentorat[]
   certificats   Certificat[]
 
   @@map("parcours")
@@ -453,6 +456,26 @@ model SessionMentorat {
   user   User @relation("ApprenanteSessions", fields: [userId], references: [id])
 
   @@map("sessions_mentorat")
+}
+
+model DemandeMentorat {
+  id             Int      @id @default(autoincrement())
+  userId         Int      @map("user_id")
+  parcoursId     Int      @map("parcours_id")
+  mentorId       Int?     @map("mentor_id")
+  statut         String   @default("en_attente") @db.VarChar(30)
+  messageSuivi   String?  @map("message_suivi") @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user     User     @relation("ApprenanteDemandesMentorat", fields: [userId], references: [id], onDelete: Cascade)
+  parcours Parcours @relation(fields: [parcoursId], references: [id], onDelete: Cascade)
+  mentor   User?    @relation("MentorDemandesMentorat", fields: [mentorId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, parcoursId])
+  @@index([mentorId, statut])
+  @@index([statut, createdAt])
+  @@map("demandes_mentorat")
 }
 
 model PasswordResetToken {

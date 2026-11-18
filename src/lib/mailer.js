@@ -30,6 +30,41 @@ export async function notifierAdminNouvelleDemandeMentorat({ apprenante, mentor,
   return true;
 }
 
+export async function notifierMentorNouveauSuivi({ mentor, apprenante, parcours, message }) {
+  if (!mentor?.email || !process.env.GMAIL_USER || !process.env.GMAIL_PASS) return false;
+  await transporter.sendMail({
+    from: `"SheTech" <${process.env.GMAIL_USER}>`,
+    to: mentor.email,
+    subject: `Nouveau suivi — ${apprenante.nom} · ${parcours.titre}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;color:#2B1B24">
+      <h2 style="color:#C45C7A">Un suivi de parcours vous a été attribué</h2>
+      <p><strong>Apprenante :</strong> ${escapeHtml(apprenante.nom)} (${escapeHtml(apprenante.email)})</p>
+      <p><strong>Parcours :</strong> ${escapeHtml(parcours.titre)}</p>
+      <p><strong>Message de l’équipe SheTech :</strong></p>
+      <p style="white-space:pre-wrap">${escapeHtml(message)}</p>
+      <p>Connectez-vous à votre espace SheTech pour consulter et mettre à jour ce suivi.</p>
+    </div>`,
+  });
+  return true;
+}
+
+export async function notifierAdminNouvelleDemandeSuivi({ apprenante, parcours }) {
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (!adminEmail || !process.env.GMAIL_USER || !process.env.GMAIL_PASS) return false;
+  await transporter.sendMail({
+    from: `"SheTech" <${process.env.GMAIL_USER}>`,
+    to: adminEmail,
+    subject: `Demande de mentorat — ${apprenante.nom}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;color:#2B1B24">
+      <h2 style="color:#C45C7A">Nouvelle demande de suivi</h2>
+      <p><strong>Apprenante :</strong> ${escapeHtml(apprenante.nom)} (${escapeHtml(apprenante.email)})</p>
+      <p><strong>Parcours choisi :</strong> ${escapeHtml(parcours.titre)}</p>
+      <p>Ouvrez la console SheTech pour choisir une mentor et lui envoyer les consignes de suivi.</p>
+    </div>`,
+  });
+  return true;
+}
+
 export async function notifierApprenanteDecisionMentorat({ email, nom, statut, mentor, dateSession, lienReunion }) {
   if (!email || !process.env.GMAIL_USER || !process.env.GMAIL_PASS) return false;
   const confirmee = statut === 'confirmee';

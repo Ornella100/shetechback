@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { getStatutAcces } from '../lib/abonnement.js';
+import { notifierAdminNouvelleDemandeSuivi } from '../lib/mailer.js';
 
 const MAX_PARCOURS = 3;
 
@@ -66,6 +67,10 @@ export const inscrireParcours = async (req, res) => {
         where: { userId_parcoursId: { userId, parcoursId } },
       });
       if (existante?.statut === 'actif' || existante?.statut === 'termine') return { deja: true };
+      const demandeExistante = await tx.demandeMentorat.findUnique({
+        where: { userId_parcoursId: { userId, parcoursId } },
+        select: { id: true },
+      });
 
       const selections = await tx.userParcours.count({ where: { userId } });
       if (!existante && selections >= MAX_PARCOURS) return { limite: true };
@@ -78,7 +83,12 @@ export const inscrireParcours = async (req, res) => {
       } else {
         await tx.userParcours.create({ data: { userId, parcoursId } });
       }
-      return { ok: true };
+      await tx.demandeMentorat.upsert({
+        where: { userId_parcoursId: { userId, parcoursId } },
+        create: { userId, parcoursId },
+        update: { updatedAt: new Date() },
+      });
+      return { ok: true, nouvelleDemande: !demandeExistante };
     });
 
     if (resultat.deja) return res.status(200).json({ message: 'Vous suivez déjà ce parcours.' });
@@ -88,7 +98,19 @@ export const inscrireParcours = async (req, res) => {
         message: `Votre pack permet de choisir ${MAX_PARCOURS} parcours au total.`,
       });
 
-    res.status(201).json({ message: `Vous êtes inscrite au parcours « ${parcours.titre} ».` });
+    if (resultat.nouvelleDemande) {
+      try {
+        const [apprenante, parcoursInfo] = await Promise.all([
+          prisma.user.findUnique({ where: { id: userId }, select: { nom: true, email: true } }),
+          prisma.parcours.findUnique({ where: { id: parcoursId }, select: { titre: true } }),
+        ]);
+        if (apprenante && parcoursInfo) await notifierAdminNouvelleDemandeSuivi({ apprenante, parcours: parcoursInfo });
+      } catch (emailError) {
+        console.error('[Mentorat] Notification admin non envoyée:', emailError.message);
+      }
+    }
+
+    res.status(201).json({ message: `Vous êtes inscrite au parcours « ${parcours.titre} ». Votre demande de suivi par une mentor a été transmise à l’équipe SheTech.` });
   } catch (err) {
     res.status(500).json({ message: 'Erreur serveur', detail: err.message });
   }
