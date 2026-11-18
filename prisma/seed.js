@@ -29,7 +29,6 @@ async function seed() {
   await prisma.user.deleteMany();
 
   console.log(' Création des utilisateurs...');
-  const dans30Jours = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   const adminPassword = await bcrypt.hash('Admin123!', 10);
   const admin = await prisma.user.create({
     data: {
@@ -48,7 +47,6 @@ async function seed() {
       motDePasse: userPassword,
       role: 'apprenante',
       niveau: 'débutante',
-      trialEndsAt: dans30Jours,
     },
   });
 

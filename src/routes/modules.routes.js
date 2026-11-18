@@ -19,7 +19,7 @@ router.delete('/modules/:id', verifierToken, verifierAdmin, moduleController.del
 
 // Lecons
 router.get('/cours/:coursId/lecons', verifierToken, verifierAccesFormation('cours', 'coursId'), leconController.getLecons);
-// Le contenu exige une inscription au parcours et un essai ou abonnement actif.
+// Le contenu exige une inscription au parcours et un accès SheTech actif.
 router.get('/lecons/:id', verifierToken, verifierAccesFormation('lecon', 'id'), leconController.getLeconDetail);
 router.post('/lecons', verifierToken, verifierAdmin, leconController.createLecon);
 router.put('/lecons/:id', verifierToken, verifierAdmin, leconController.updateLecon);

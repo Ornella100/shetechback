@@ -4,6 +4,7 @@
   "type": "module",
   "main": "src/server.js",
   "scripts": {
+    "prestart": "npm run db:migrate:deploy",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "db:migrate": "prisma migrate dev",

@@ -3,8 +3,7 @@ import { Transaction, Webhook } from '../lib/fedapay.js';
 import { getStatutAcces } from '../lib/abonnement.js';
 import { traiterWebhookMarketplace } from './marketplace.controller.js';
 
-const PRIX_XOF = () => Number(process.env.ABONNEMENT_PRIX_XOF || 5000);
-const DUREE_JOURS = 30;
+const PRIX_XOF = () => Number(process.env.PRIX_PACK_PARCOURS_XOF || 150000);
 
 // GET /abonnement/statut (token)
 export const getStatut = async (req, res) => {
@@ -17,11 +16,19 @@ export const getStatut = async (req, res) => {
   }
 };
 
-// POST /abonnement/checkout (token) — crée une transaction FedaPay et renvoie l'URL de paiement
+// POST /abonnement/checkout (token) — achat unique donnant accès à trois parcours
 export const creerCheckout = async (req, res) => {
   try {
     if (!process.env.FEDAPAY_SECRET_KEY)
       return res.status(503).json({ message: 'Le paiement en ligne n\'est pas encore configuré. Contactez l\'équipe SheTech.' });
+
+    const access = await getStatutAcces(req.user.id);
+    if (access.acces && access.type !== 'test' && access.type !== 'staff') {
+      return res.status(409).json({ message: 'Votre accès au pack de trois parcours est déjà actif.' });
+    }
+    if (access.type === 'test' || access.type === 'staff') {
+      return res.status(409).json({ message: 'Ce compte dispose déjà d’un accès de test ou d’équipe.' });
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
@@ -31,7 +38,7 @@ export const creerCheckout = async (req, res) => {
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const transaction = await Transaction.create({
-      description: 'Abonnement mensuel SheTech',
+      description: 'Pack SheTech — accès à trois parcours',
       amount: PRIX_XOF(),
       currency: { iso: 'XOF' },
       callback_url: `${frontendUrl}/dashboard/abonnement?retour=1`,
@@ -78,13 +85,13 @@ export const mesPaiements = async (req, res) => {
   }
 };
 
-// GET /admin/abonnements (token + admin) — traçabilité complète
+// GET /admin/abonnements (token + admin) — traçabilité des achats
 export const listeAbonnementsAdmin = async (req, res) => {
   try {
     const users = await prisma.user.findMany({
       where: { role: 'apprenante' },
       select: {
-        id: true, nom: true, email: true, trialEndsAt: true, createdAt: true,
+        id: true, nom: true, email: true, createdAt: true,
         abonnements: {
           orderBy: { dateFin: 'desc' },
           select: { id: true, statut: true, dateDebut: true, dateFin: true, source: true },
@@ -96,33 +103,28 @@ export const listeAbonnementsAdmin = async (req, res) => {
       },
       orderBy: { createdAt: 'desc' },
     });
-    const now = new Date();
     res.json(users.map(u => ({
       ...u,
-      acces: (u.trialEndsAt && u.trialEndsAt > now) || u.abonnements.some(a => a.statut === 'active' && a.dateFin > now),
+      acces: u.abonnements.some(a => a.statut === 'active' && (!a.dateFin || a.dateFin > new Date()))
+        || process.env.TEST_ACCESS_EMAIL?.trim().toLowerCase() === u.email.toLowerCase(),
     })));
   } catch {
     res.status(500).json({ message: 'Erreur serveur' });
   }
 };
 
-// Crée l'abonnement lié à un paiement approuvé. Un abonnement en cours est prolongé
-// (le nouveau mois démarre à la fin de l'abonnement actif, pas à la date du paiement).
-async function activerAbonnement(paiement) {
+// Enregistre l'accès permanent obtenu par le paiement approuvé.
+async function activerAchat(paiement) {
+  const dejaActif = await prisma.abonnement.findUnique({ where: { paiementId: paiement.id } });
+  if (dejaActif) return;
   const now = new Date();
-  const dernierActif = await prisma.abonnement.findFirst({
-    where: { userId: paiement.userId, statut: 'active', dateFin: { gt: now } },
-    orderBy: { dateFin: 'desc' },
-  });
-  const dateDebut = dernierActif ? dernierActif.dateFin : now;
-  const dateFin = new Date(dateDebut.getTime() + DUREE_JOURS * 24 * 60 * 60 * 1000);
   await prisma.abonnement.create({
     data: {
       userId: paiement.userId,
       statut: 'active',
-      dateDebut,
-      dateFin,
-      source: 'fedapay',
+      dateDebut: now,
+      dateFin: null,
+      source: 'achat_pack_3_parcours',
       paiementId: paiement.id,
     },
   });
@@ -159,7 +161,7 @@ export const webhookFedapay = async (req, res) => {
     }
 
     if (nom === 'transaction.approved') {
-      // Idempotent : un webhook rejoué ne crée pas de second abonnement
+      // Idempotent : un webhook rejoué ne crée pas de second accès
       if (paiement.statut !== 'approved') {
         await prisma.paiement.update({
           where: { id: paiement.id },
@@ -170,7 +172,7 @@ export const webhookFedapay = async (req, res) => {
             payloadWebhook: entity,
           },
         });
-        await activerAbonnement(paiement);
+        await activerAchat(paiement);
       }
     } else if (nom === 'transaction.declined' || nom === 'transaction.canceled') {
       if (paiement.statut === 'pending') {
@@ -205,7 +207,7 @@ export const verifierTransaction = async (req, res) => {
           where: { id: paiement.id },
           data: { statut: 'approved', methode: transaction.mode || null },
         });
-        await activerAbonnement(paiement);
+        await activerAchat(paiement);
       } else if (['declined', 'canceled'].includes(transaction.status)) {
         await prisma.paiement.update({
           where: { id: paiement.id },

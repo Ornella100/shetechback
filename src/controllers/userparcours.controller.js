@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js';
+import { getStatutAcces } from '../lib/abonnement.js';
 
 const MAX_PARCOURS = 3;
 
@@ -14,6 +15,7 @@ export const mesInscriptions = async (req, res) => {
     res.json({
       max: MAX_PARCOURS,
       actifs,
+      selectionnes: inscriptions.length,
       inscriptions: inscriptions.map(i => ({
         id: i.id,
         parcours_id: i.parcoursId,
@@ -34,6 +36,14 @@ export const inscrireParcours = async (req, res) => {
   try {
     const parcours = await prisma.parcours.findUnique({ where: { id: parcoursId }, select: { id: true, titre: true } });
     if (!parcours) return res.status(404).json({ message: 'Parcours introuvable' });
+
+    const access = await getStatutAcces(userId);
+    if (!access.acces) {
+      return res.status(402).json({
+        code: 'ACHAT_REQUIS',
+        message: 'Achetez le pack à 150 000 FCFA pour choisir jusqu’à trois parcours avant de commencer.',
+      });
+    }
 
     const leconsDisponibles = await prisma.lecon.count({
       where: {
@@ -57,8 +67,8 @@ export const inscrireParcours = async (req, res) => {
       });
       if (existante?.statut === 'actif' || existante?.statut === 'termine') return { deja: true };
 
-      const actifs = await tx.userParcours.count({ where: { userId, statut: 'actif' } });
-      if (actifs >= MAX_PARCOURS) return { limite: true };
+      const selections = await tx.userParcours.count({ where: { userId } });
+      if (!existante && selections >= MAX_PARCOURS) return { limite: true };
 
       if (existante) {
         await tx.userParcours.update({
@@ -75,7 +85,7 @@ export const inscrireParcours = async (req, res) => {
     if (resultat.limite)
       return res.status(400).json({
         code: 'LIMITE_PARCOURS',
-        message: `Vous suivez déjà ${MAX_PARCOURS} parcours (maximum autorisé). Désinscrivez-vous d'un parcours pour en suivre un autre.`,
+        message: `Votre pack permet de choisir ${MAX_PARCOURS} parcours au total.`,
       });
 
     res.status(201).json({ message: `Vous êtes inscrite au parcours « ${parcours.titre} ».` });

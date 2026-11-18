@@ -45,8 +45,8 @@ export function verifierAccesFormation(kind, paramName, { source = 'params' } = 
           });
         }
         return res.status(402).json({
-          code: 'ABONNEMENT_REQUIS',
-          message: 'Votre période d’essai est terminée. Abonnez-vous pour accéder au contenu.',
+          code: 'ACHAT_REQUIS',
+          message: 'Achetez le pack SheTech pour accéder à vos trois parcours.',
         });
       }
       return next();
@@ -81,8 +81,8 @@ export function verifierAccesParcours(paramName) {
         }
         if (!statut.acces) {
           return res.status(402).json({
-            code: 'ABONNEMENT_REQUIS',
-            message: 'Votre période d’essai est terminée. Abonnez-vous pour accéder au quiz.',
+            code: 'ACHAT_REQUIS',
+            message: 'Achetez le pack SheTech pour accéder au quiz de ce parcours.',
           });
         }
       }

@@ -682,7 +682,7 @@ model Abonnement {
   userId     Int      @map("user_id")
   statut     String   @default("active") // active | expired | canceled
   dateDebut  DateTime @map("date_debut")
-  dateFin    DateTime @map("date_fin")
+  dateFin    DateTime? @map("date_fin")
   source     String   @default("fedapay") // fedapay | admin
   paiementId Int?     @unique @map("paiement_id")
   createdAt  DateTime @default(now()) @map("created_at")
