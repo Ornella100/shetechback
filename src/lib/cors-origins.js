@@ -12,11 +12,14 @@ const configuredOrigins = [
 // Domaine Vercel de production. Garder cette origine autorisée par défaut
 // évite une panne complète du site si CORS_ORIGINS n'est pas configuré sur Render.
 const productionOrigins = [
-  'https://shetechfront-kwuu.vercel.app',
   'https://shetech-woman.vercel.app',
 ];
 
-const allowedOrigins = new Set([...localOrigins, ...productionOrigins, ...configuredOrigins]);
+const retiredOrigins = new Set(['https://shetechfront-kwuu.vercel.app']);
+const allowedOrigins = new Set(
+  [...localOrigins, ...productionOrigins, ...configuredOrigins]
+    .filter((origin) => !retiredOrigins.has(origin)),
+);
 
 export function isAllowedOrigin(origin) {
   return !origin || allowedOrigins.has(origin.replace(/\/$/, ''));
