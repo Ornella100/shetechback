@@ -18,9 +18,17 @@ async function estEchangeMentorat(userIdA, userIdB) {
   });
   const roles = new Map(users.map((user) => [user.id, user.role]));
   const mentorId = roles.get(userIdA) === 'mentor' ? userIdA : roles.get(userIdB) === 'mentor' ? userIdB : null;
-  const adminPresent = roles.get(userIdA) === 'admin' || roles.get(userIdB) === 'admin';
-  if (!mentorId || !adminPresent) return false;
-  return Boolean(await prisma.demandeMentorat.findFirst({ where: { mentorId }, select: { id: true } }));
+  if (!mentorId) return false;
+  const autreId = mentorId === userIdA ? userIdB : userIdA;
+  if (roles.get(autreId) === 'admin') {
+    return Boolean(await prisma.demandeMentorat.findFirst({ where: { mentorId }, select: { id: true } }));
+  }
+  const apprenanteId = roles.get(autreId) === 'apprenante' ? autreId : null;
+  if (!apprenanteId) return false;
+  return Boolean(await prisma.demandeMentorat.findFirst({
+    where: { mentorId, userId: apprenanteId },
+    select: { id: true },
+  }));
 }
 
 export const getConversations = async (req, res) => {
@@ -33,16 +41,24 @@ export const getConversations = async (req, res) => {
     const suivisSet = new Set(suivis.map((s) => s.followingId));
     const mutuels = suiveurs.map((s) => s.followerId).filter((id) => suivisSet.has(id));
     const contacts = new Set(mutuels);
+    const contactsMentorat = new Set();
     const role = req.user.role;
     if (role === 'admin') {
       const suivis = await prisma.demandeMentorat.findMany({ where: { mentorId: { not: null } }, select: { mentorId: true }, distinct: ['mentorId'] });
       suivis.forEach((suivi) => contacts.add(suivi.mentorId));
     } else if (role === 'mentor') {
-      const aUnSuivi = await prisma.demandeMentorat.findFirst({ where: { mentorId: userId }, select: { id: true } });
-      if (aUnSuivi) {
+      const suivies = await prisma.demandeMentorat.findMany({ where: { mentorId: userId }, select: { userId: true } });
+      suivies.forEach((suivi) => { contacts.add(suivi.userId); contactsMentorat.add(suivi.userId); });
+      if (suivies.length) {
         const admins = await prisma.user.findMany({ where: { role: 'admin' }, select: { id: true } });
         admins.forEach((admin) => contacts.add(admin.id));
       }
+    } else if (role === 'apprenante') {
+      const demandes = await prisma.demandeMentorat.findMany({
+        where: { userId, mentorId: { not: null } },
+        select: { mentorId: true },
+      });
+      demandes.forEach((demande) => { contacts.add(demande.mentorId); contactsMentorat.add(demande.mentorId); });
     }
     const users = await prisma.user.findMany({ where: { id: { in: [...contacts] } }, select: { id: true, nom: true, role: true } });
     const conversations = await Promise.all(users.map(async (u) => {
@@ -56,6 +72,9 @@ export const getConversations = async (req, res) => {
       return {
         user_id: u.id, nom: u.nom, role: u.role,
         dernier_message: dernierMessage?.contenu || null,
+        message_accueil: contactsMentorat.has(u.id)
+          ? (role === 'apprenante' ? 'Vous pouvez discuter avec votre mentor ici.' : 'Vous pouvez échanger avec cette apprenante ici.')
+          : null,
         dernier_message_at: dernierMessage?.createdAt || null,
         nb_non_lus: nbNonLus,
       };
